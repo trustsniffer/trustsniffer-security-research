@@ -1,0 +1,52 @@
+{
+  "dataset": "Sanctioned and frozen USDT/USDC wallets",
+  "publisher": "Trustsniffer Security Research",
+  "snapshot_date": "2026-09-14",
+  "scope": "Addresses whose most recent recorded state on the USDT or USDC contract is frozen, on Ethereum and Tron.",
+  "designations": {
+    "issuer_freeze": "The token issuer blacklisted the address at the contract level. Observable on-chain. Not by itself a government sanction.",
+    "sanctions_listed": "The record additionally carries a government designation or seizure-order attribution (for example OFAC, NBCTF, a national seizure order)."
+  },
+  "fields": [
+    "address",
+    "chain",
+    "token",
+    "designation",
+    "attribution",
+    "source_note",
+    "first_recorded"
+  ],
+  "chains": {
+    "ethereum": {
+      "total": 3130,
+      "sanctions_listed": 127,
+      "issuer_freeze": 3003,
+      "unfrozen_excluded": 384,
+      "malformed_excluded": 0,
+      "by_token": {
+        "USDC": 416,
+        "USDT": 2714
+      },
+      "csv": "sanctioned-wallets-ethereum.csv",
+      "jsonl": "sanctioned-wallets-ethereum.jsonl"
+    },
+    "tron": {
+      "total": 7388,
+      "sanctions_listed": 812,
+      "issuer_freeze": 6576,
+      "unfrozen_excluded": 954,
+      "malformed_excluded": 36,
+      "by_token": {
+        "USDT": 7388
+      },
+      "csv": "sanctioned-wallets-tron.csv",
+      "jsonl": "sanctioned-wallets-tron.jsonl"
+    }
+  },
+  "notes": {
+    "address_case": "Ethereum addresses are published lower-cased; compare case-insensitively (EIP-55 checksum casing carries no extra identity).",
+    "excluded": "Addresses whose latest recorded state is unfrozen, and malformed address strings, are excluded and counted per chain."
+  },
+  "license": "CC BY 4.0",
+  "caveat": "Point-in-time snapshot. Freezes are lifted and designations are amended; verify against the token contract and the publishing authority before relying on any row."
+}

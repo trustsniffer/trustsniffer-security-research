@@ -1,0 +1,7 @@
+# Trustsniffer Security Research — https://trustsniffer.github.io/trustsniffer-security-research/
+# Open research notes and reference datasets. Everything here is intended to be crawled.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://trustsniffer.github.io/trustsniffer-security-research/sitemap.xml

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>On-Chain Wallet Risk Analysis: Signals, Context and Limitations</title>
+<meta name="description" content="How wallet exposure is assessed on public blockchains: direct versus indirect exposure, hop distance, fund-flow interpretation, why association is not proof, and where on-chain false positives come from.">
+<link rel="canonical" href="https://trustsniffer.github.io/trustsniffer-security-research/research/on-chain-wallet-risk.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Trustsniffer Security Research">
+<meta property="og:title" content="On-Chain Wallet Risk Analysis: Signals, Context and Limitations">
+<meta property="og:description" content="Direct versus indirect exposure, hop distance, fund-flow interpretation, why association is not proof, and where on-chain false positives come from.">
+<meta property="og:url" content="https://trustsniffer.github.io/trustsniffer-security-research/research/on-chain-wallet-risk.html">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../assets/css/research.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "On-Chain Wallet Risk Analysis: Signals, Context and Limitations",
+  "description": "How wallet exposure is assessed on public blockchains: direct versus indirect exposure, hop distance, fund-flow interpretation, why association is not proof, and where on-chain false positives come from.",
+  "datePublished": "2026-09-14",
+  "dateModified": "2026-09-14",
+  "inLanguage": "en",
+  "author": { "@type": "Organization", "name": "Trustsniffer Security Research", "url": "https://trustsniffer.github.io/trustsniffer-security-research/" },
+  "publisher": { "@type": "Organization", "name": "Trustsniffer Security Research", "url": "https://trustsniffer.github.io/trustsniffer-security-research/" },
+  "mainEntityOfPage": "https://trustsniffer.github.io/trustsniffer-security-research/research/on-chain-wallet-risk.html"
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="../">
+      <svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+        <line x1="8" y1="28" x2="18" y2="10" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+        <line x1="18" y1="10" x2="28" y2="28" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+        <line x1="8" y1="28" x2="28" y2="28" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+        <circle cx="18" cy="10" r="3.5" fill="#22d3ee"/>
+        <circle cx="8" cy="28" r="3" fill="#22d3ee" opacity=".75"/>
+        <circle cx="28" cy="28" r="3" fill="#22d3ee" opacity=".75"/>
+      </svg>
+      <span class="brand-text">
+        <span class="brand-name">Trustsniffer<span> Security Research</span></span>
+        <span class="brand-kicker">Open research notes</span>
+      </span>
+    </a>
+    <nav class="site-nav" aria-label="Research sections">
+      <ul>
+        <li><a href="../">Home</a></li>
+        <li><a href="website-risk-intelligence.html">Website Risk</a></li>
+        <li><a href="on-chain-wallet-risk.html" aria-current="page">Wallet Risk</a></li>
+        <li><a href="sanctions-screening-research.html">Sanctions</a></li>
+        <li><a href="multi-signal-risk-analysis.html">Multi-Signal</a></li>
+        <li><a href="../data/stablecoin-sanctioned-wallets.html">Datasets</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+    <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">Research</a> → On-chain wallet risk</nav>
+  </div>
+
+  <article>
+    <header class="article-head">
+      <div class="wrap">
+        <p class="eyebrow">On-chain analysis</p>
+        <h1>On-Chain Wallet Risk Analysis: Signals, Context and Limitations</h1>
+        <p class="lede">Public ledgers make every transfer observable and almost nothing self-explanatory. This
+          note is about the gap between the two: what a transaction graph supports, and where confident
+          readings of it go wrong.</p>
+        <p class="article-meta">Published 2026-09-14 · Methodology note · Trustsniffer Security Research</p>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="article-body">
+        <p>On-chain analysis starts from an unusual advantage. Unlike web investigation, where a site can lie
+          about itself and hide its history, the ledger is complete, public and immutable. Every transfer that
+          ever happened is there, in order, with amounts.</p>
+        <p>The difficulty is that the ledger records <em>movement</em> and almost never records <em>meaning</em>.
+          Addresses have no names. Two transfers with identical shape can be a salary payment and a laundering
+          hop. The analytical work is entirely in reconstructing context that the chain does not store.</p>
+
+        <h2>1. What an address actually is</h2>
+        <p>Before assessing an address, establish what kind of object it is. The same score means different
+          things for each.</p>
+        <div class="table-scroll">
+          <table>
+            <caption>Address types and what a risky counterparty implies for each</caption>
+            <thead>
+              <tr><th>Type</th><th>Typical signature</th><th>What one tainted inbound transfer implies</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Personal wallet</td><td>Few counterparties, irregular timing, one custody pattern</td><td>A lot — a small counterparty set makes each edge meaningful</td></tr>
+              <tr><td>Exchange deposit address</td><td>Receives from one user, forwards to a hot wallet, then dormant</td><td>Something about the depositor, not the exchange</td></tr>
+              <tr><td>Exchange hot wallet</td><td>Enormous degree, constant flow, both directions, many tokens</td><td>Almost nothing — it receives from everyone by design</td></tr>
+              <tr><td>Contract (DEX, bridge, mixer)</td><td>Code at the address; flow determined by callers</td><td>Nothing about the contract; possibly something about the caller</td></tr>
+              <tr><td>Service or payout wallet</td><td>Many small outbound transfers on a schedule</td><td>Depends on whether the service screens its own inflows</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Failing to classify first is the most common structural error in this work. A "high risk" verdict on
+          a major exchange's hot wallet is not a finding; it is a description of what exchanges are.</p>
+
+        <h2>2. Direct exposure versus indirect exposure</h2>
+        <p>These are different claims and should never share a number.</p>
+        <p><strong>Direct exposure</strong> means the address transacted with a flagged address itself: one hop,
+          no intermediaries. It is a factual statement about a specific transaction that can be cited by hash.</p>
+        <p><strong>Indirect exposure</strong> means value reached the address through intermediaries. It is a
+          statement about a path, and its strength decays with every hop for reasons that are structural rather
+          than conventional: each additional hop multiplies the number of plausible explanations, and most
+          real-world paths pass through at least one address that mixes funds from many sources.</p>
+        <p>Once value enters a high-degree node — an exchange hot wallet, a large DEX pool, a bridge — the
+          output side is no longer traceable to the input side by graph structure alone. Anything claimed
+          "through" such a node is an inference about the service's internal accounting, not an observation of
+          the chain. Serious methodologies treat those nodes as <em>terminal</em>: the trace stops, and says so.</p>
+
+        <div class="callout">
+          <p class="callout-title">Practical rule</p>
+          <p>State hop distance and path composition with every exposure claim. "Two hops, both through
+            personal-looking wallets, 0.9 of the value" and "two hops, second through a major exchange" are
+            different findings that a single percentage would render identically.</p>
+        </div>
+
+        <h2>3. Reading fund flows</h2>
+        <p>Direction, timing and proportion carry most of the signal.</p>
+        <ul>
+          <li><strong>Direction.</strong> Receiving from a flagged address is something that can be done to you;
+            anyone can send funds to any address, unsolicited. Sending to one is a choice. The two must not be
+            weighted equally, and dusting — tiny unsolicited transfers, sometimes deliberately from tainted
+            sources — is a known technique for contaminating an innocent address's profile.</li>
+          <li><strong>Proportion.</strong> A tainted transfer worth 0.0001% of a wallet's lifetime volume is
+            noise. One representing most of its balance is the wallet's defining event.</li>
+          <li><strong>Timing.</strong> Rapid onward movement after receipt, particularly splitting into equal
+            amounts across new addresses, is a recognisable pattern. So is the reverse: consolidation of many
+            small inbounds into one outbound, which is what both a laundering funnel and an ordinary merchant
+            settlement look like.</li>
+          <li><strong>Longevity.</strong> An address created, used once and abandoned tells a different story
+            from one used continuously for three years.</li>
+        </ul>
+        <p>Every one of those patterns has a legitimate twin. Equal-value splits are also how payroll and
+          airdrops work. Consolidation is also what an accountant does. The pattern raises the question; the
+          counterparties and the context answer it.</p>
+
+        <h2>4. Association is not proof</h2>
+        <p>This deserves stating directly, because the entire field's credibility depends on it.</p>
+        <p>An address appearing in a transaction with a flagged address establishes exactly one fact: a transfer
+          occurred. It does not establish that the owners know each other, that the receiving party consented,
+          that either understood the provenance, or that anyone committed an offence. Ownership itself is an
+          inference — addresses are not identities, custody can be shared, keys can be stolen, and a single
+          person routinely controls many addresses while a single address can represent many people.</p>
+        <p>The defensible language reflects this. "Received 4,200 USDT in three transfers from an address
+          designated by OFAC on 12 March" is a citable fact. "Is linked to sanctioned entities" is a
+          characterisation that the evidence does not support and that will not survive review.</p>
+
+        <div class="callout is-limit">
+          <p class="callout-title">Where on-chain false positives come from</p>
+          <p>Unsolicited inbound transfers and dusting; shared infrastructure such as exchange, bridge and
+            pool addresses that receive from everyone; address reuse across unrelated purposes; stale
+            attribution after an address changes hands or a designation is lifted; cross-chain identifier
+            collisions; and naive multi-hop tracing that treats a high-degree node as transparent. These
+            account for the large majority of wrong calls, and every one of them is detectable before the
+            finding is written.</p>
+        </div>
+
+        <h2>5. Issuer action is a fact; sanctions designation is a different fact</h2>
+        <p>Stablecoin issuers can freeze balances at the contract level, and those freezes are observable
+          on-chain as state changes. Sanctions designations are administrative decisions published by
+          government bodies. They overlap but are not the same thing, and conflating them produces claims that
+          are simply incorrect.</p>
+        <p>An issuer may freeze an address at law-enforcement request, after a hack, or under its own terms of
+          service, with no sanctions designation involved. Conversely, a designated address may never be frozen
+          on any particular token contract. When publishing or consuming a list, insist on knowing which of the
+          two a row represents — our own
+          <a href="../data/stablecoin-sanctioned-wallets.html">frozen stablecoin wallet dataset</a> keeps them
+          in separate columns for exactly this reason, and the
+          <a href="sanctions-screening-research.html">sanctions research note</a> covers the designation side
+          in depth.</p>
+
+        <h2>6. An order of work that avoids the usual traps</h2>
+        <ul class="checklist">
+          <li>Normalise and validate the address, and confirm the chain. A valid-looking string on the wrong
+            network is a different address entirely.</li>
+          <li>Classify the address type before scoring anything: degree, lifetime, counterparty diversity,
+            whether code is deployed there.</li>
+          <li>Separate inbound from outbound and record them separately.</li>
+          <li>Identify direct counterparties that carry an independent designation or attribution, and cite the
+            transaction hashes.</li>
+          <li>Extend outward hop by hop, stopping at any node whose degree makes the path uninterpretable, and
+            record where you stopped.</li>
+          <li>Express exposure in value proportion as well as in count. Three tainted transfers out of four
+            matter; three out of forty thousand generally do not.</li>
+          <li>Check whether any designation you relied on is still current, and date the finding.</li>
+        </ul>
+        <p>For a single address, a public <a href="https://trustsniffer.com/on-chain-risk">crypto wallet risk
+          checker</a> will do the classification and first-hop exposure pass for you, which is a reasonable
+          starting point before deciding whether a deeper manual trace is warranted.</p>
+
+        <h2>7. What a good output looks like</h2>
+        <p>A useful wallet assessment states the address and chain; the classification and the evidence for it;
+          direct exposure with hashes and dates; indirect exposure with hop distance, path composition and the
+          point at which tracing stopped; the value proportion; the designations relied on with their sources
+          and dates; and an explicit statement of what was not determined.</p>
+        <p>That last element is the one most often missing and the one that most distinguishes research from
+          assertion. "No evidence of direct exposure was found within four hops as of 14 September 2026" is a
+          statement someone can act on. "Clean" is not.</p>
+      </div>
+
+      <div class="related article-body">
+        <h2>Continue</h2>
+        <p>Designations are only as good as the entity resolution behind them:
+          <a href="sanctions-screening-research.html">Sanctions Research for Digital Risk Investigations</a>.</p>
+        <p>For combining chain evidence with web and behavioural evidence, see
+          <a href="multi-signal-risk-analysis.html">Why Multi-Signal Analysis Improves Digital Risk Research</a>.</p>
+      </div>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <h2>Research</h2>
+        <ul>
+          <li><a href="website-risk-intelligence.html">Website Risk Intelligence</a></li>
+          <li><a href="on-chain-wallet-risk.html">On-Chain Wallet Risk</a></li>
+          <li><a href="sanctions-screening-research.html">Sanctions Research</a></li>
+          <li><a href="multi-signal-risk-analysis.html">Multi-Signal Analysis</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Data</h2>
+        <ul>
+          <li><a href="../data/stablecoin-sanctioned-wallets.html">Frozen stablecoin wallets</a></li>
+          <li><a href="../data/sanctioned-wallets-ethereum.csv">Ethereum list (CSV)</a></li>
+          <li><a href="../data/sanctioned-wallets-tron.csv">Tron list (CSV)</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <ul>
+          <li><a href="../">Research home</a></li>
+          <li><a href="https://github.com/trustsniffer/trustsniffer-security-research">Repository</a></li>
+          <li><a href="../sitemap.xml">Sitemap</a></li>
+        </ul>
+      </div>
+    </div>
+    <p class="footer-note"><strong>Research disclaimer.</strong> Methodology notes for research and educational
+      purposes. Nothing here is legal, financial or compliance advice, and no page asserts that any named
+      domain, address or entity has committed an offence. Risk indicators describe observations, not
+      conclusions.</p>
+  </div>
+</footer>
+</body>
+</html>

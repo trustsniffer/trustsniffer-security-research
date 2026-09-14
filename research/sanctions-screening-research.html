@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sanctions Research for Digital Risk Investigations</title>
+<meta name="description" content="Entity resolution, name collisions, transliteration, jurisdictional divergence and data limitations in sanctions research, and why every screening hit needs verification against the primary source.">
+<link rel="canonical" href="https://trustsniffer.github.io/trustsniffer-security-research/research/sanctions-screening-research.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Trustsniffer Security Research">
+<meta property="og:title" content="Sanctions Research for Digital Risk Investigations">
+<meta property="og:description" content="Entity resolution, name collisions, jurisdictional divergence and data limitations in sanctions research, and why every hit needs primary-source verification.">
+<meta property="og:url" content="https://trustsniffer.github.io/trustsniffer-security-research/research/sanctions-screening-research.html">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="../assets/css/research.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Sanctions Research for Digital Risk Investigations",
+  "description": "Entity resolution, name collisions, transliteration, jurisdictional divergence and data limitations in sanctions research, and why every screening hit needs verification against the primary source.",
+  "datePublished": "2026-09-14",
+  "dateModified": "2026-09-14",
+  "inLanguage": "en",
+  "author": { "@type": "Organization", "name": "Trustsniffer Security Research", "url": "https://trustsniffer.github.io/trustsniffer-security-research/" },
+  "publisher": { "@type": "Organization", "name": "Trustsniffer Security Research", "url": "https://trustsniffer.github.io/trustsniffer-security-research/" },
+  "mainEntityOfPage": "https://trustsniffer.github.io/trustsniffer-security-research/research/sanctions-screening-research.html"
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="../">
+      <svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+        <line x1="8" y1="28" x2="18" y2="10" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+        <line x1="18" y1="10" x2="28" y2="28" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+        <line x1="8" y1="28" x2="28" y2="28" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+        <circle cx="18" cy="10" r="3.5" fill="#22d3ee"/>
+        <circle cx="8" cy="28" r="3" fill="#22d3ee" opacity=".75"/>
+        <circle cx="28" cy="28" r="3" fill="#22d3ee" opacity=".75"/>
+      </svg>
+      <span class="brand-text">
+        <span class="brand-name">Trustsniffer<span> Security Research</span></span>
+        <span class="brand-kicker">Open research notes</span>
+      </span>
+    </a>
+    <nav class="site-nav" aria-label="Research sections">
+      <ul>
+        <li><a href="../">Home</a></li>
+        <li><a href="website-risk-intelligence.html">Website Risk</a></li>
+        <li><a href="on-chain-wallet-risk.html">Wallet Risk</a></li>
+        <li><a href="sanctions-screening-research.html" aria-current="page">Sanctions</a></li>
+        <li><a href="multi-signal-risk-analysis.html">Multi-Signal</a></li>
+        <li><a href="../data/stablecoin-sanctioned-wallets.html">Datasets</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+    <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">Research</a> → Sanctions research</nav>
+  </div>
+
+  <article>
+    <header class="article-head">
+      <div class="wrap">
+        <p class="eyebrow">Sanctions &amp; entity data</p>
+        <h1>Sanctions Research for Digital Risk Investigations</h1>
+        <p class="lede">A screening hit is the beginning of the work, not the end of it. This note is about the
+          part that follows: resolving whether the record and the subject are actually the same entity.</p>
+        <p class="article-meta">Published 2026-09-14 · Methodology note · Trustsniffer Security Research</p>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="article-body">
+        <p>Sanctions lists look like the one piece of unambiguous ground in digital risk work. A government
+          publishes a list; a name is either on it or not. In practice the matching problem sits between the
+          list and reality, and that problem is where nearly all the error lives.</p>
+
+        <h2>1. What a sanctions list is</h2>
+        <p>A sanctions list is an administrative record published by an authority — a national government, a
+          supranational body, or a ministry acting under a specific legal instrument. Each entry identifies a
+          person, organisation, vessel, aircraft or, increasingly, a cryptocurrency address, and attaches legal
+          consequences within that authority's jurisdiction.</p>
+        <p>Three properties follow and are routinely forgotten:</p>
+        <ul>
+          <li><strong>A list is jurisdictional.</strong> A designation by one authority is not a global
+            prohibition. Obligations depend on where a party operates, its nationality, its currency of
+            settlement and often its ownership.</li>
+          <li><strong>A list changes.</strong> Entries are added, amended and removed. A delisting is as
+            operationally significant as a listing, and it propagates through downstream copies far more
+            slowly.</li>
+          <li><strong>A list is about identity, not behaviour.</strong> It tells you that an authority
+            designated an entity. It does not itself describe what the entity did.</li>
+        </ul>
+
+        <h2>2. Entity resolution: the actual difficulty</h2>
+        <p>Screening compares a subject against records that were written in a different context, often a
+          different script, frequently decades ago. Deciding whether two descriptions denote the same entity is
+          the discipline of entity resolution, and it is harder than it sounds.</p>
+        <h3>Name collisions</h3>
+        <p>Common names are common. A sanctions list containing a person with a widespread given name and family
+          name will collide with a very large number of unrelated individuals. Sanctions records anticipate this
+          by carrying discriminators — date of birth, place of birth, nationality, passport or national ID
+          numbers, known addresses. A match on name alone, with none of the discriminators checked, is not a
+          match. It is a candidate.</p>
+        <h3>Transliteration and orthography</h3>
+        <p>Names originally written in Arabic, Cyrillic, Persian, Chinese or Korean reach a Latin-script list
+          through transliteration, and there is no single correct transliteration. One person can appear under
+          several spellings across different authorities' lists, and a strict string comparison will miss all
+          but one. Fuzzy matching solves that and creates the opposite problem: loosen the threshold enough to
+          catch genuine variants and you begin matching genuinely different people. There is no threshold that
+          avoids both, which is why the discriminator check is not optional.</p>
+        <h3>Corporate identity</h3>
+        <p>Organisations are harder than people. They restructure, rename, change jurisdiction, and operate
+          through subsidiaries whose names resemble nothing on the list. Several regimes extend designation to
+          entities owned or controlled above a threshold by a designated party, which means the relevant
+          question is often about a shareholding structure that the list does not enumerate. That work requires
+          corporate registry evidence, not a string comparison.</p>
+
+        <div class="callout is-warn">
+          <p class="callout-title">The discriminator rule</p>
+          <p>Escalate a name match only when at least one strong identifier agrees — date of birth, an
+            identity-document number, a registration number, or a cryptographic address. Record which
+            identifier matched. A hit you cannot describe in those terms is a hit you cannot defend.</p>
+        </div>
+
+        <h2>3. Addresses on sanctions lists</h2>
+        <p>Cryptocurrency addresses are a newer and, in one narrow respect, easier class of identifier: an
+          address is an exact string, so matching is deterministic and transliteration does not arise. That
+          precision creates its own traps.</p>
+        <ul>
+          <li><strong>The address is designated; adjacency is not.</strong> A designation covers the listed
+            address. Whether an obligation extends to a counterparty that received funds from it is a legal
+            question about the specific regime and the facts, not something the list answers.</li>
+          <li><strong>Addresses outlive their listing context.</strong> Deposit addresses get reassigned,
+            wallets change hands, and an address listed in connection with one operation may later be
+            controlled by someone unconnected to it.</li>
+          <li><strong>Chain matters.</strong> The same string can be valid on multiple EVM networks. A
+            designation that names a network means that network.</li>
+          <li><strong>Issuer freezes are not designations.</strong> A stablecoin issuer freezing a balance is a
+            private contractual action, sometimes at law-enforcement request, sometimes not. Our own
+            <a href="../data/stablecoin-sanctioned-wallets.html">frozen stablecoin dataset</a> separates the
+            two into distinct columns because merging them produces false claims in both directions.</li>
+        </ul>
+
+        <h2>4. Where the data itself is weak</h2>
+        <div class="table-scroll">
+          <table>
+            <caption>Data limitations to account for before relying on a screening result</caption>
+            <thead>
+              <tr><th>Limitation</th><th>Consequence</th><th>Mitigation</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Sparse discriminators on older entries</td><td>Name-only comparison; high collision rate</td><td>Treat as candidate; require corroboration from another evidence domain</td></tr>
+              <tr><td>Aggregator latency</td><td>Recently added or removed entries missing for hours or days</td><td>Record the snapshot date; re-check the primary source for material decisions</td></tr>
+              <tr><td>Normalisation loss</td><td>Diacritics, particles and honorifics stripped inconsistently</td><td>Compare against the original record, not only the normalised index</td></tr>
+              <tr><td>Divergence between authorities</td><td>An entity listed in one jurisdiction and not another</td><td>Screen against the lists that actually bind the party, and name them</td></tr>
+              <tr><td>Ownership and control thresholds</td><td>Undesignated subsidiaries in scope by ownership</td><td>Registry research; cannot be resolved by list matching alone</td></tr>
+              <tr><td>Stale downstream copies</td><td>Delisted entities still flagged</td><td>Re-verify every hit against the publishing authority before acting</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>5. Verification, and why it cannot be skipped</h2>
+        <p>Both error directions carry real cost. A false positive can freeze a legitimate customer's funds,
+          terminate a legitimate business relationship and cause documented harm to someone who did nothing. A
+          false negative can mean a genuine breach. Neither is a rounding error, and the asymmetry many teams
+          assume — that over-flagging is the safe choice — is not true of the person wrongly flagged.</p>
+        <ul class="checklist">
+          <li>Open the entry at the publishing authority, not at an aggregator, and record the programme and
+            the listing date.</li>
+          <li>Compare every available discriminator and write down which matched and which did not.</li>
+          <li>Establish that the entry is still current at the time you are relying on it.</li>
+          <li>Determine which regimes actually bind the party in question.</li>
+          <li>For an address, confirm the chain and the designation's stated scope.</li>
+          <li>Preserve the evidence: source URL, retrieval timestamp, and the record as it read that day.</li>
+          <li>Where the match remains ambiguous, say so explicitly rather than rounding to a verdict.</li>
+        </ul>
+        <p>For an overview of publicly documented entities and addresses in a browsable form, our
+          <a href="https://trustsniffer.com/directory">sanctions directory</a> is a convenient starting index —
+          though for anything with consequences, the authority's own publication remains the record that
+          counts.</p>
+
+        <h2>6. Writing it up</h2>
+        <p>A sanctions finding should be readable by someone who will disagree with it. That means: the subject
+          as you received it; the record matched; the authority, programme and listing date; the discriminators
+          that agreed and those that did not; the confidence and what would change it; and the retrieval
+          timestamp. Phrased that way, a reviewer can evaluate the reasoning instead of taking the conclusion on
+          trust — which is the only form of finding that survives contact with a serious challenge.</p>
+      </div>
+
+      <div class="related article-body">
+        <h2>Continue</h2>
+        <p>Sanctions data rarely settles a question on its own. How it combines with web and chain evidence is
+          the subject of <a href="multi-signal-risk-analysis.html">Why Multi-Signal Analysis Improves Digital
+          Risk Research</a>.</p>
+        <p>For the on-chain half of the same problem, see
+          <a href="on-chain-wallet-risk.html">On-Chain Wallet Risk Analysis</a>.</p>
+      </div>
+    </div>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <h2>Research</h2>
+        <ul>
+          <li><a href="website-risk-intelligence.html">Website Risk Intelligence</a></li>
+          <li><a href="on-chain-wallet-risk.html">On-Chain Wallet Risk</a></li>
+          <li><a href="sanctions-screening-research.html">Sanctions Research</a></li>
+          <li><a href="multi-signal-risk-analysis.html">Multi-Signal Analysis</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Data</h2>
+        <ul>
+          <li><a href="../data/stablecoin-sanctioned-wallets.html">Frozen stablecoin wallets</a></li>
+          <li><a href="../data/sanctioned-wallets-ethereum.csv">Ethereum list (CSV)</a></li>
+          <li><a href="../data/sanctioned-wallets-tron.csv">Tron list (CSV)</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <ul>
+          <li><a href="../">Research home</a></li>
+          <li><a href="https://github.com/trustsniffer/trustsniffer-security-research">Repository</a></li>
+          <li><a href="../sitemap.xml">Sitemap</a></li>
+        </ul>
+      </div>
+    </div>
+    <p class="footer-note"><strong>Research disclaimer.</strong> Methodology notes for research and educational
+      purposes. Nothing here is legal, financial or compliance advice, and no page asserts that any named
+      domain, address or entity has committed an offence. Sanctions obligations depend on jurisdiction and
+      facts; verify against the publishing authority and your own counsel.</p>
+  </div>
+</footer>
+</body>
+</html>
